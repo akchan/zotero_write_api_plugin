@@ -1,7 +1,19 @@
 {
   "addons": {
     "zotero-write-api@akchan.acts": {
-      "updates": []
+      "updates": [
+        {
+          "applications": {
+            "zotero": {
+              "strict_max_version": "*",
+              "strict_min_version": "7.0"
+            }
+          },
+          "update_hash": "sha256:d523cdb87b99c11e943814bc812b0abaeb95bacc1e97743da9a0a4e09734a457",
+          "update_link": "https://github.com/akchan/zotero_write_api_plugin/releases/download/v0.1.2/zotero-write-api-0.1.2.xpi",
+          "version": "0.1.2"
+        }
+      ]
     }
   }
 }
