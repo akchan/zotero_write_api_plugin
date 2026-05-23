@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "esbuild src/bootstrap.ts --outfile=src/bootstrap.js --target=firefox115",
+    "build": "esbuild src/bootstrap.ts --outfile=dist/bootstrap.js --target=firefox115",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src/bootstrap.ts"
   },
@@ -14,5 +14,8 @@
     "eslint": "^10.0.3",
     "typescript": "^5.9.3",
     "zotero-types": "^4.1.2"
+  },
+  "dependencies": {
+    "bun": "^1.3.14"
   }
 }

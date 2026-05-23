@@ -3,8 +3,6 @@ package-lock.json
 tsconfig.tsbuildinfo
 __pycache__/
 *.pyc
-*.xpi
+dist/
 .DS_Store
 node_modules/
-src/bootstrap.js
-src/manifest.json

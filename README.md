@@ -45,11 +45,21 @@ For `/attach` and `import_pdf`, payloads with `file_path` are constrained to `FU
 Requires `node` (or `bun`) and `python3` with `pyyaml`.
 
 ```
-npm install     # or: bun install
+npm install            # or: bun install
 npx tsc --noEmit
-npm run build   # esbuild -> src/bootstrap.js
-python3 build.py
+python3 build.py       # writes everything to dist/
 ```
+
+`build.py` runs esbuild (via `bun run build` if `bun` is on `$PATH`, otherwise `npm run build`) and emits:
+
+```
+dist/
+├── bootstrap.js                       # esbuild output
+├── manifest.json                      # generated from config.yml
+└── zotero-write-api-<VERSION>.xpi     # final installable
+```
+
+`dist/` is gitignored.
 
 `just release` (requires [just](https://github.com/casey/just) and `bun`) bumps the version, builds, tags, and pushes — the GitHub Actions workflow then publishes the XPI.
 

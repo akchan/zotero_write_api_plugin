@@ -4,11 +4,11 @@ version:
 
 # Type-check the TypeScript source
 typecheck:
-    bun tsc --noEmit
+    @if command -v bun >/dev/null 2>&1; then bun tsc --noEmit; else npx tsc --noEmit; fi
 
 # Lint the TypeScript source
 lint:
-    bun run lint
+    @if command -v bun >/dev/null 2>&1; then bun run lint; else npm run lint --silent; fi
 
 # Compile TypeScript and build the XPI (does not bump version or release)
 build:
@@ -91,8 +91,8 @@ _bump bump_type:
 _release bump_type: (_bump bump_type)
     #!/usr/bin/env bash
     set -euo pipefail
-    bun run typecheck
-    bun run lint
+    just typecheck
+    just lint
     python3 build.py
     version=$(cat VERSION)
     git add VERSION updates.json

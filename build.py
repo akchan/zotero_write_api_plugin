@@ -6,6 +6,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import shutil
 import subprocess
 import zipfile
 from pathlib import Path
@@ -14,7 +15,9 @@ import yaml
 
 ROOT = Path(__file__).resolve().parent
 SRC = ROOT / "src"
-BOOTSTRAP_PATH = SRC / "bootstrap.js"
+DIST = ROOT / "dist"
+BOOTSTRAP_PATH = DIST / "bootstrap.js"
+MANIFEST_PATH = DIST / "manifest.json"
 ICONS_DIR = SRC / "icons"
 UPDATES_PATH = ROOT / "updates.json"
 
@@ -123,10 +126,9 @@ def _zip_entry(arcname: str) -> zipfile.ZipInfo:
 
 
 def build_xpi() -> Path:
-    manifest_path = SRC / "manifest.json"
-    xpi_path = ROOT / XPI_FILENAME
+    xpi_path = DIST / XPI_FILENAME
     with zipfile.ZipFile(xpi_path, "w", zipfile.ZIP_DEFLATED) as xpi:
-        xpi.writestr(_zip_entry("manifest.json"), manifest_path.read_bytes())
+        xpi.writestr(_zip_entry("manifest.json"), MANIFEST_PATH.read_bytes())
         xpi.writestr(_zip_entry("bootstrap.js"), BOOTSTRAP_PATH.read_bytes())
         if ICONS_DIR.is_dir():
             for icon in sorted(ICONS_DIR.iterdir()):
@@ -162,20 +164,29 @@ def build_updates_manifest(xpi_hash: str) -> dict[str, object]:
 
 
 def remove_old_xpis() -> None:
-    for old_xpi in ROOT.glob("*.xpi"):
+    for old_xpi in DIST.glob("*.xpi"):
         old_xpi.unlink()
+    # Clean up legacy artifacts from when build output lived next to sources.
+    for legacy in [ROOT.glob("*.xpi"), [SRC / "bootstrap.js", SRC / "manifest.json"]]:
+        for path in legacy:
+            if path.exists():
+                path.unlink()
 
 
 def compile_typescript() -> None:
-    result = subprocess.run(
-        ["bun", "run", "build"],
-        cwd=ROOT,
-        capture_output=True,
-        text=True,
-    )
+    if shutil.which("bun"):
+        cmd = ["bun", "run", "build"]
+    elif shutil.which("npm"):
+        cmd = ["npm", "run", "build", "--silent"]
+    else:
+        raise RuntimeError(
+            "Neither bun nor npm is installed; cannot compile bootstrap.ts. "
+            "Install one (e.g. `brew install oven-sh/bun/bun` or use system Node.js)."
+        )
+    result = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True)
     if result.returncode != 0:
-        raise RuntimeError(f"TypeScript compilation failed:\n{result.stderr}")
-    print("Compiled TypeScript")
+        raise RuntimeError(f"TypeScript compilation failed ({cmd[0]}):\n{result.stderr}")
+    print(f"Compiled TypeScript via {cmd[0]}")
 
 
 def build() -> Path:
@@ -183,10 +194,11 @@ def build() -> Path:
     print(f"Zotero compatibility: {STRICT_MIN_VERSION} – {STRICT_MAX_VERSION}")
     print(f"Tested target: Zotero {TESTED_ZOTERO_VERSION}")
 
+    DIST.mkdir(exist_ok=True)
     compile_typescript()
     update_bootstrap_metadata()
     manifest = build_manifest()
-    write_json(SRC / "manifest.json", manifest)
+    write_json(MANIFEST_PATH, manifest)
     remove_old_xpis()
     xpi_path = build_xpi()
     write_json(UPDATES_PATH, build_updates_manifest(sha256sum(xpi_path)))
