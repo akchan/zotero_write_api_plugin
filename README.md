@@ -1,73 +1,62 @@
-# Zotero Attachment Plugin
+# Zotero Write API Plugin
 
-Local Zotero add-on that fills the write gap in Zotero's built-in HTTP API.
+Minimal Zotero plugin that exposes a small set of **write** endpoints on Zotero's local HTTP server (`http://127.0.0.1:23119`). It is a stripped-down fork of [`dzackgarza/zotero-local-write-api`](https://github.com/dzackgarza/zotero-local-write-api), kept just to the operations consumed by the companion MCP server.
+
+> **Intended client:** [`akchan/zotero_mcp_server_write`](https://github.com/akchan/zotero_mcp_server_write) — an MCP server that lets an LLM perform Zotero write operations locally. Direct `curl` use is fine but secondary; the plugin exists to back that server.
+
+For *read* operations (search, fetch, fulltext, collections), the recommended companion is the read-only MCP server [`54yyyu/zotero-mcp`](https://github.com/54yyyu/zotero-mcp).
 
 ## Why This Exists
 
-Zotero 7 ships a read-only local HTTP API at `localhost:23119/api/` that covers every read operation an agent needs: fetch items by key, search the library, list collections, read tags, retrieve full-text, and execute saved searches. It requires no authentication and has no rate limits.
+Zotero 7+ ships a built-in HTTP API at `127.0.0.1:23119/api/` that is **read-only**. To let an LLM add items, attach PDFs, and write notes locally — without going through the Zotero Web API — we need a small writeable surface registered as a plugin. Upstream `zotero-local-write-api` ships ~25 write operations; this fork keeps only the four workflows the MCP server actually uses.
 
-That API has **no write capability whatsoever.** Every endpoint is GET-only. This add-on exists to cover that gap until write support is implemented upstream. It registers additional endpoints on the same Zotero server that handle:
+## Endpoints
 
-- Mutating item fields, tags, and collection membership
-- Creating and trashing items, notes, and collections
-- Attaching files and URLs to items
-- Collection and tag management (rename, merge, move, delete)
-- Creating items from scratch
+| Endpoint  | Method | Purpose |
+|-----------|--------|---------|
+| `/attach`  | POST   | Attach a file (path or base64 bytes) to an existing item as a stored attachment |
+| `/write`   | POST   | Operation dispatcher; see operations below |
+| `/version` | GET    | Plugin version, supported operations, capability probe |
 
-It also exposes a file-attachment workflow that stages a file from disk into Zotero's storage, which the native API does not provide.
+### `/write` operations
 
-See [issue #1](https://github.com/dzackgarza/zotero-attachment-plugin/issues/1) for write operations not yet implemented.
+| Operation              | Payload                                                                              | Result |
+|------------------------|---------------------------------------------------------------------------------------|--------|
+| `import_by_identifier` | `{identifier: string, collection_key?: string}`                                       | Creates an item from a DOI / ISBN / arXiv ID / PMID via the matching translator. |
+| `attach_note`          | `{item_key: string, note: string}`                                                    | Adds an HTML note as a child of the given item. |
+| `import_pdf`           | `{file_path?: string, file_bytes_base64?: string, file_name?: string, collection_key?: string}` | Imports a PDF as a standalone attachment, then runs `Zotero.RecognizeDocument` to extract a DOI/arXiv ID and create a parent item. Returns `status: "recognized"` with `parent_item_key` and `attachment_key`, or `status: "standalone"` if the recognizer could not identify the document. |
 
-## What It Ships
+For `/attach` and `import_pdf`, payloads with `file_path` are constrained to `FULLTEXT_ALLOWED_DIRS` (`/tmp`, `/var/tmp`). The base64 path has no such constraint.
 
-The endpoint names, add-on ID, compatibility range, and update URL live in [`config.yml`](./config.yml). The add-on registers three endpoints on Zotero's local HTTP server:
+## Install
 
-| Endpoint | Method | Purpose |
-|---|---|---|
-| `/attach` | POST | Attach a file from disk to a Zotero item |
-| `/write` | POST | All write operations (dispatched by `operation` field) |
-| `/version` | GET | Version probe and capability list |
-
-The version probe lets consumers require a minimum installed add-on version before issuing write requests.
+1. Download the latest XPI from the [Releases page](https://github.com/akchan/zotero_write_api_plugin/releases).
+2. In Zotero: **Tools → Add-ons → ⚙ → Install Add-on From File...**
+3. Restart Zotero. The endpoints come up at startup; check the Zotero debug log for `Zotero Write API: Registered ...`.
+4. Probe: `curl http://127.0.0.1:23119/version`.
 
 ## Compatibility
 
-- Zotero: `7.0` and later
-- Tested against: `8.0.1`
+- Zotero `7.0` and later
+- Tested against Zotero `8.0.1`
 
-## Repo Layout
+## Build from source
 
-```text
-src/               Plugin source (bootstrap.js, icons, generated manifest.json)
-examples/          Example python scripts demonstrating how to interact with the API
-build.py           Builds the XPI from src/ and writes updates.json
-config.yml         All stable constants — addon ID, repo, Zotero compatibility, endpoints
-VERSION            Current version number (plain text, bumped by justfile)
-updates.json       Committed; fetched by Zotero at the update_url for auto-update
-justfile           Release workflow
+Requires `node` (or `bun`) and `python3` with `pyyaml`.
+
+```
+npm install     # or: bun install
+npx tsc --noEmit
+npm run build   # esbuild -> src/bootstrap.js
+python3 build.py
 ```
 
-## Examples
+`just release` (requires [just](https://github.com/casey/just) and `bun`) bumps the version, builds, tags, and pushes — the GitHub Actions workflow then publishes the XPI.
 
-The `examples/` directory contains standalone python scripts demonstrating how to interact with local Zotero plus this API:
+## What was removed from the upstream fork
 
-1. **[`find_item_by_bibtex.py`](./examples/find_item_by_bibtex.py)**: Shows how to search for an item in a local library through the `pyzotero` interface via its Better BibTeX citation key.
-2. **[`offline_pipeline.py`](./examples/offline_pipeline.py)**: Demonstrates an end-to-end local text extraction pipeline, reading a PDF with standard APIs, extracting text via `PyMuPDF`, and attaching the result back to the Zotero item seamlessly using the `/write` endpoint.
+The upstream plugin handles tags, collections, item-field edits, attachment relinking, item merging, and more. This fork removes every handler except the three listed above, plus the `/attach` and `/version` endpoints. The reasoning is that the consuming MCP server only exposes four tools (`add_by_doi`, `add_pdf`, `attach_pdf_to_item`, `add_note`), so additional surface is dead weight here. If you need the wider surface, use upstream directly.
 
-## Build and Release
+## License
 
-```bash
-just release          # bump patch version, build, commit, tag, push
-just release-minor    # bump minor version
-just release-major    # bump major version
-```
-
-`VERSION` and `config.yml` are the two sources of truth. `build.py` derives everything else — `updates.json`, the XPI, and the injected constants in `bootstrap.js`.
-
-GitHub Actions picks up the tag and publishes the GitHub Release with the `.xpi` asset. Zotero polls `update_url` in the installed manifest and offers the update automatically.
-
-Install the `.xpi` from Zotero's `Tools → Add-ons → Install Add-on From File`, then verify:
-
-- `GET http://127.0.0.1:23119/version`
-- `POST http://127.0.0.1:23119/attach`
-- `POST http://127.0.0.1:23119/write`
+MIT, matching upstream.

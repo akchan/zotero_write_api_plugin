@@ -1,13 +1,14 @@
 addon:
-  id: local-write-api@dzackgarza.com
-  slug: local-write-api
-  name: Local Write API
-  author: D. Zack Garza
-  description: Exposes write endpoints on Zotero's local HTTP server, covering the
-    gap left by the read-only built-in API.
+  id: zotero-write-api@akchan.acts
+  slug: zotero-write-api
+  name: Zotero Write API
+  author: akchan
+  description: Minimal Zotero write API used by the zotero_mcp_server_write MCP
+    server. Exposes /attach, /write (import_by_identifier, attach_note,
+    import_pdf), and /version endpoints on Zotero's local HTTP server.
 repo:
-  owner: dzackgarza
-  name: zotero-local-write-api
+  owner: akchan
+  name: zotero_write_api_plugin
   branch: main
 zotero:
   strict_min_version: '7.0'

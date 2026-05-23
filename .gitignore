@@ -1,4 +1,6 @@
 .serena/
+package-lock.json
+tsconfig.tsbuildinfo
 __pycache__/
 *.pyc
 *.xpi

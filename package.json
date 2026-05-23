@@ -1,5 +1,5 @@
 {
-  "name": "local-write-api",
+  "name": "zotero-write-api",
   "private": true,
   "type": "module",
   "scripts": {
