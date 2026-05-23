@@ -5,7 +5,7 @@ let AttachEndpoint: any;
 let WriteEndpoint: any;
 let VersionEndpoint: any;
 
-const PLUGIN_VERSION = "0.2.0";
+const PLUGIN_VERSION = "0.2.1";
 const FULLTEXT_ATTACH_PATH = "/attach";
 const LOCAL_WRITE_PATH = "/write";
 const VERSION_PATH = "/version";
@@ -20,6 +20,7 @@ const DEFAULT_MAX_ATTACH_MB = 100;
 const SUPPORTED_OPERATIONS = [
 	"import_by_identifier",
 	"attach_note",
+	"update_note",
 	"import_pdf",
 ];
 const PLUGIN_CAPABILITIES = [
@@ -305,6 +306,29 @@ async function handleAttachNote(data: RequestData): Promise<JsonPayload> {
 	);
 }
 
+async function handleUpdateNote(data: RequestData): Promise<JsonPayload> {
+	const noteKey = requireNonEmptyString(data.note_key, "note_key");
+	const noteText = requireString(data.note, "note");
+	const noteItem = await getUserItemOrThrow(noteKey);
+	if (!noteItem.isNote()) {
+		throw new Error("Item is not a note: " + noteKey);
+	}
+	noteItem.setNote(noteText);
+	await noteItem.saveTx();
+
+	return successResult(
+		"update_note",
+		{
+			note_key: noteKey,
+			note_length: noteText.length,
+		},
+		{
+			note_key: noteItem.key,
+			note_id: noteItem.id,
+		}
+	);
+}
+
 function detectIdentifier(raw: string): Record<string, string> | null {
 	const doi = Zotero.Utilities.cleanDOI(raw);
 	if (doi) {
@@ -464,6 +488,8 @@ async function runWrite(data: RequestData): Promise<JsonPayload> {
 			return handleImportByIdentifier(data);
 		case "attach_note":
 			return handleAttachNote(data);
+		case "update_note":
+			return handleUpdateNote(data);
 		case "import_pdf":
 			return handleImportPdf(data);
 		default:
