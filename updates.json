@@ -9,9 +9,9 @@
               "strict_min_version": "7.0"
             }
           },
-          "update_hash": "sha256:d523cdb87b99c11e943814bc812b0abaeb95bacc1e97743da9a0a4e09734a457",
-          "update_link": "https://github.com/akchan/zotero_write_api_plugin/releases/download/v0.1.2/zotero-write-api-0.1.2.xpi",
-          "version": "0.1.2"
+          "update_hash": "sha256:7ac5fb40b75455a12f2a86d8850929dbfb602b122bb3d7610262fd407eaee0eb",
+          "update_link": "https://github.com/akchan/zotero_write_api_plugin/releases/download/v0.2.0/zotero-write-api-0.2.0.xpi",
+          "version": "0.2.0"
         }
       ]
     }

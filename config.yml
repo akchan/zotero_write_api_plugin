@@ -18,7 +18,3 @@ endpoints:
   attach: /attach
   write: /write
   version: /version
-fulltext_attach:
-  allowed_dirs:
-  - /tmp
-  - /var/tmp
