@@ -22,6 +22,7 @@ const SUPPORTED_OPERATIONS = [
 	"attach_note",
 	"update_note",
 	"import_pdf",
+	"add_tags",
 ];
 const PLUGIN_CAPABILITIES = [
 	"attach_bytes",
@@ -481,6 +482,53 @@ async function handleImportPdf(data: RequestData): Promise<JsonPayload> {
 	}
 }
 
+async function handleAddTags(data: RequestData): Promise<JsonPayload> {
+	const itemKey = requireNonEmptyString(data.item_key, "item_key");
+	if (!Array.isArray(data.tags)) {
+		throw new Error("tags must be an array");
+	}
+	const tagNames: string[] = [];
+	for (const entry of data.tags) {
+		const name = requireNonEmptyString(entry, "tags[]");
+		tagNames.push(name);
+	}
+	if (tagNames.length === 0) {
+		throw new Error("tags must contain at least one entry");
+	}
+
+	const item = await getUserItemOrThrow(itemKey);
+	const added: string[] = [];
+	const skipped: string[] = [];
+	for (const name of tagNames) {
+		// addTag returns true when newly added, false when already present
+		if (item.addTag(name, 0)) {
+			added.push(name);
+		}
+		else {
+			skipped.push(name);
+		}
+	}
+	if (added.length > 0) {
+		await item.saveTx();
+	}
+
+	return successResult(
+		"add_tags",
+		{
+			item_key: itemKey,
+			requested: tagNames.length,
+			added_count: added.length,
+			skipped_count: skipped.length,
+		},
+		{
+			item_key: item.key,
+			item_id: item.id,
+			added: added,
+			skipped: skipped,
+		}
+	);
+}
+
 async function runWrite(data: RequestData): Promise<JsonPayload> {
 	const operation = requireNonEmptyString(data.operation, "operation");
 	switch (operation) {
@@ -492,6 +540,8 @@ async function runWrite(data: RequestData): Promise<JsonPayload> {
 			return handleUpdateNote(data);
 		case "import_pdf":
 			return handleImportPdf(data);
+		case "add_tags":
+			return handleAddTags(data);
 		default:
 			throw new Error("Unsupported operation: " + operation);
 	}
