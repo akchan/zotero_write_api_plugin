@@ -27,15 +27,58 @@ const PLUGIN_CAPABILITIES = [
 ];
 
 type RequestData = Record<string, unknown>;
-type SendResponse = (status: number, contentType: string, body: string) => void;
+type EndpointRequest = {
+	method: "GET" | "POST";
+	pathname: string;
+	query: Record<string, string>;
+	headers: Record<string, string>;
+	data: unknown;
+};
+type EndpointResponse = [code: number, contentType: string, body: string];
 type JsonPayload = Record<string, unknown>;
 
 function log(msg: string): void {
 	Zotero.debug("Zotero Write API: " + msg);
 }
 
-function sendJSON(sendResponse: SendResponse, statusCode: number, payload: JsonPayload): void {
-	sendResponse(statusCode, "application/json", JSON.stringify(payload));
+function jsonResponse(statusCode: number, payload: JsonPayload): EndpointResponse {
+	return [statusCode, "application/json", JSON.stringify(payload)];
+}
+
+function lowercaseHeaders(headers: Record<string, string> | undefined): Record<string, string> {
+	const out: Record<string, string> = {};
+	if (headers) {
+		for (const key in headers) {
+			out[key.toLowerCase()] = headers[key];
+		}
+	}
+	return out;
+}
+
+function isLocalHostValue(value: string): boolean {
+	const stripped = value.replace(/^https?:\/\//i, "");
+	const hostPart = stripped.split("/")[0].split(":")[0].toLowerCase();
+	return hostPart === "localhost"
+		|| hostPart === "127.0.0.1"
+		|| hostPart === "[::1]"
+		|| hostPart === "::1";
+}
+
+// Reject cross-origin / DNS-rebinding attempts against the connector port.
+function verifyLocalRequest(rawHeaders: Record<string, string> | undefined): void {
+	const headers = lowercaseHeaders(rawHeaders);
+	const host = headers["host"];
+	if (host && !isLocalHostValue(host)) {
+		throw new Error("Host header not local: " + host);
+	}
+	const origin = headers["origin"];
+	if (origin && origin !== "null" && !isLocalHostValue(origin)) {
+		throw new Error("Origin header not local: " + origin);
+	}
+	const referer = headers["referer"];
+	if (referer && !isLocalHostValue(referer)) {
+		throw new Error("Referer header not local: " + referer);
+	}
 }
 
 function successResult(operation: string, details?: JsonPayload, extra?: JsonPayload): JsonPayload {
@@ -408,24 +451,21 @@ async function startup({ id, version, rootURI }: { id: string; version: string; 
 	AttachEndpoint.prototype = {
 		supportedMethods: ["POST"],
 		supportedDataTypes: ["application/json"],
-		init: async function(data: RequestData, sendResponse: SendResponse) {
+		init: async function(request: EndpointRequest): Promise<EndpointResponse> {
+			const data = (request.data ?? {}) as RequestData;
 			try {
+				verifyLocalRequest(request.headers);
 				log("Received POST request to " + FULLTEXT_ATTACH_PATH + " [v" + PLUGIN_VERSION + "]");
-				sendJSON(sendResponse, 200, await handleFulltextAttach(data));
+				return jsonResponse(200, await handleFulltextAttach(data));
 			}
 			catch (error) {
 				const msg = (error as Error).message;
 				log("Error in " + FULLTEXT_ATTACH_PATH + " [v" + PLUGIN_VERSION + "]: " + msg);
-				sendJSON(
-					sendResponse,
-					500,
-					errorResult(
-						"attach_file_to_item",
-						"attach_endpoint",
-						msg,
-						{ request: data ?? {} }
-					)
-				);
+				return jsonResponse(500, errorResult(
+					"attach_file_to_item",
+					"attach_endpoint",
+					msg
+				));
 			}
 		}
 	};
@@ -434,26 +474,22 @@ async function startup({ id, version, rootURI }: { id: string; version: string; 
 	WriteEndpoint.prototype = {
 		supportedMethods: ["POST"],
 		supportedDataTypes: ["application/json"],
-		init: async function(data: RequestData, sendResponse: SendResponse) {
+		init: async function(request: EndpointRequest): Promise<EndpointResponse> {
+			const data = (request.data ?? {}) as RequestData;
+			const operation = data?.operation ?? "unknown_operation";
 			try {
-				const operation = data?.operation ?? "unknown_operation";
+				verifyLocalRequest(request.headers);
 				log("Received POST request to " + LOCAL_WRITE_PATH + " [operation=" + operation + "]");
-				sendJSON(sendResponse, 200, await runWrite(data ?? {}));
+				return jsonResponse(200, await runWrite(data));
 			}
 			catch (error) {
-				const operation = data?.operation ?? "unknown_operation";
 				const msg = (error as Error).message;
 				log("Error in " + LOCAL_WRITE_PATH + " [operation=" + operation + "]: " + msg);
-				sendJSON(
-					sendResponse,
-					500,
-					errorResult(
-						String(operation),
-						"write_endpoint",
-						msg,
-						{ request: data ?? {} }
-					)
-				);
+				return jsonResponse(500, errorResult(
+					String(operation),
+					"write_endpoint",
+					msg
+				));
 			}
 		}
 	};
@@ -461,9 +497,21 @@ async function startup({ id, version, rootURI }: { id: string; version: string; 
 	VersionEndpoint = function() {};
 	VersionEndpoint.prototype = {
 		supportedMethods: ["GET"],
-		init: function(_data: unknown, sendResponse: SendResponse) {
-			log("Received GET request to " + VERSION_PATH + " [v" + PLUGIN_VERSION + "]");
-			sendJSON(sendResponse, 200, pluginVersionPayload());
+		init: function(request: EndpointRequest): EndpointResponse {
+			try {
+				verifyLocalRequest(request.headers);
+				log("Received GET request to " + VERSION_PATH + " [v" + PLUGIN_VERSION + "]");
+				return jsonResponse(200, pluginVersionPayload());
+			}
+			catch (error) {
+				const msg = (error as Error).message;
+				log("Error in " + VERSION_PATH + " [v" + PLUGIN_VERSION + "]: " + msg);
+				return jsonResponse(403, errorResult(
+					"version_probe",
+					"version_endpoint",
+					msg
+				));
+			}
 		}
 	};
 

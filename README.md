@@ -28,6 +28,10 @@ Zotero 7+ ships a built-in HTTP API at `127.0.0.1:23119/api/` that is **read-onl
 
 The plugin accepts file content only as base64-encoded bytes (`file_bytes_base64` + `file_name`). The previous `file_path` parameter was removed in 0.2.0 to prevent the Zotero process from being directed to read arbitrary files outside the caller's intent (e.g. via symlinks in world-writable `/tmp`, path traversal, or unauthenticated localhost callers). Callers are responsible for reading the file themselves and sending the bytes.
 
+## Security
+
+- **Local-only**: requests are rejected if their `Host`, `Origin`, or `Referer` header points anywhere other than `localhost`/`127.0.0.1`. This defends against DNS-rebinding and cross-origin POSTs from a browser the user happens to have open.
+
 ## Install
 
 1. Download the latest XPI from the [Releases page](https://github.com/akchan/zotero_write_api_plugin/releases).
