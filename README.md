@@ -14,7 +14,7 @@ Zotero 7+ ships a built-in HTTP API at `127.0.0.1:23119/api/` that is **read-onl
 
 | Endpoint  | Method | Purpose |
 |-----------|--------|---------|
-| `/attach`  | POST   | Attach a file (path or base64 bytes) to an existing item as a stored attachment |
+| `/attach`  | POST   | Attach a file (base64 bytes) to an existing item as a stored attachment. Payload: `{item_key, title, file_name, file_bytes_base64}` |
 | `/write`   | POST   | Operation dispatcher; see operations below |
 | `/version` | GET    | Plugin version, supported operations, capability probe |
 
@@ -24,9 +24,9 @@ Zotero 7+ ships a built-in HTTP API at `127.0.0.1:23119/api/` that is **read-onl
 |------------------------|---------------------------------------------------------------------------------------|--------|
 | `import_by_identifier` | `{identifier: string, collection_key?: string}`                                       | Creates an item from a DOI / ISBN / arXiv ID / PMID via the matching translator. |
 | `attach_note`          | `{item_key: string, note: string}`                                                    | Adds an HTML note as a child of the given item. |
-| `import_pdf`           | `{file_path?: string, file_bytes_base64?: string, file_name?: string, collection_key?: string}` | Imports a PDF as a standalone attachment, then runs `Zotero.RecognizeDocument` to extract a DOI/arXiv ID and create a parent item. Returns `status: "recognized"` with `parent_item_key` and `attachment_key`, or `status: "standalone"` if the recognizer could not identify the document. |
+| `import_pdf`           | `{file_name: string, file_bytes_base64: string, collection_key?: string}` | Imports a PDF as a standalone attachment, then runs `Zotero.RecognizeDocument` to extract a DOI/arXiv ID and create a parent item. Returns `status: "recognized"` with `parent_item_key` and `attachment_key`, or `status: "standalone"` if the recognizer could not identify the document. |
 
-For `/attach` and `import_pdf`, payloads with `file_path` are constrained to `FULLTEXT_ALLOWED_DIRS` (`/tmp`, `/var/tmp`). The base64 path has no such constraint.
+The plugin accepts file content only as base64-encoded bytes (`file_bytes_base64` + `file_name`). The previous `file_path` parameter was removed in 0.2.0 to prevent the Zotero process from being directed to read arbitrary files outside the caller's intent (e.g. via symlinks in world-writable `/tmp`, path traversal, or unauthenticated localhost callers). Callers are responsible for reading the file themselves and sending the bytes.
 
 ## Install
 

@@ -5,11 +5,10 @@ let AttachEndpoint: any;
 let WriteEndpoint: any;
 let VersionEndpoint: any;
 
-const PLUGIN_VERSION = "0.1.0";
+const PLUGIN_VERSION = "0.2.0";
 const FULLTEXT_ATTACH_PATH = "/attach";
 const LOCAL_WRITE_PATH = "/write";
 const VERSION_PATH = "/version";
-const FULLTEXT_ALLOWED_DIRS = ["/tmp", "/var/tmp"];
 const ADDON_ID = "zotero-write-api@akchan.acts";
 const HOMEPAGE_URL = "https://github.com/akchan/zotero_write_api_plugin";
 const UPDATE_URL = "https://raw.githubusercontent.com/akchan/zotero_write_api_plugin/main/updates.json";
@@ -22,7 +21,6 @@ const SUPPORTED_OPERATIONS = [
 	"import_pdf",
 ];
 const PLUGIN_CAPABILITIES = [
-	"attach",
 	"attach_bytes",
 	"write",
 	"version_probe",
@@ -132,19 +130,6 @@ async function collectionIDFromKey(collectionKey: string): Promise<number> {
 	return collection.id;
 }
 
-function resolveAttachFilePath(filePath: string): string {
-	const file = Zotero.File.pathToFile(filePath);
-	if (!file.exists()) {
-		throw new Error("File not found: " + filePath);
-	}
-	return file.path;
-}
-
-function isMissingFileError(error: unknown): boolean {
-	return typeof (error as Error).message === "string"
-		&& (error as Error).message.includes("NS_ERROR_FILE_NOT_FOUND");
-}
-
 async function materializeUploadBytes(fileName: string, fileBytesBase64: string): Promise<string> {
 	const tempDir = Zotero.getTempDirectory();
 	const safeFileName = Zotero.File.getValidFileName(fileName.trim()) || "attachment.bin";
@@ -170,9 +155,8 @@ function removeTempFile(tempPath: string): void {
 }
 
 async function importStoredAttachment(parentItem: Zotero.Item, filePath: string, title: string): Promise<Zotero.Item> {
-	const resolvedFilePath = resolveAttachFilePath(filePath);
 	const attachment = await Zotero.Attachments.importFromFile({
-		file: resolvedFilePath,
+		file: filePath,
 		libraryID: parentItem.libraryID,
 		parentItemID: parentItem.id,
 		title: title,
@@ -187,45 +171,16 @@ async function importStoredAttachment(parentItem: Zotero.Item, filePath: string,
 async function handleFulltextAttach(data: RequestData): Promise<JsonPayload> {
 	const itemKey = requireNonEmptyString(data.item_key, "item_key");
 	const title = requireNonEmptyString(data.title, "title");
-	const filePath = optionalNonEmptyString(data.file_path);
-	const fileName = optionalNonEmptyString(data.file_name);
-	const fileBytesBase64 = optionalNonEmptyString(data.file_bytes_base64);
-
-	if (!filePath && !fileBytesBase64) {
-		throw new Error("Either file_path or file_bytes_base64 must be provided");
-	}
+	const fileName = requireNonEmptyString(data.file_name, "file_name");
+	const fileBytesBase64 = requireNonEmptyString(data.file_bytes_base64, "file_bytes_base64");
 
 	const parentItem = await getUserItemOrThrow(itemKey);
-	let attachment: Zotero.Item;
-	let sourceMode = "path";
 	let tempPath: string | null = null;
+	let attachment: Zotero.Item;
 
 	try {
-		if (filePath) {
-			if (!FULLTEXT_ALLOWED_DIRS.some(dir => filePath.startsWith(dir))) {
-				throw new Error(
-					"File path must be within allowed directories: " + FULLTEXT_ALLOWED_DIRS.join(", ")
-				);
-			}
-			try {
-				attachment = await importStoredAttachment(parentItem, filePath, title);
-			}
-			catch (error) {
-				if (!fileBytesBase64 || !isMissingFileError(error)) {
-					throw error;
-				}
-				const fallbackName = fileName || Zotero.File.pathToFile(filePath).leafName || "attachment.bin";
-				tempPath = await materializeUploadBytes(fallbackName, fileBytesBase64);
-				attachment = await importStoredAttachment(parentItem, tempPath, title);
-				sourceMode = "bytes_fallback";
-			}
-		}
-		else {
-			const requiredFileName = requireNonEmptyString(data.file_name, "file_name");
-			tempPath = await materializeUploadBytes(requiredFileName, requireNonEmptyString(data.file_bytes_base64, "file_bytes_base64"));
-			attachment = await importStoredAttachment(parentItem, tempPath, title);
-			sourceMode = "bytes";
-		}
+		tempPath = await materializeUploadBytes(fileName, fileBytesBase64);
+		attachment = await importStoredAttachment(parentItem, tempPath, title);
 	}
 	finally {
 		if (tempPath) {
@@ -237,8 +192,7 @@ async function handleFulltextAttach(data: RequestData): Promise<JsonPayload> {
 		"attach_file_to_item",
 		{
 			parent_item_key: itemKey,
-			file_path: filePath,
-			source_mode: sourceMode,
+			source_mode: "bytes",
 			title: title,
 		},
 		{
@@ -339,31 +293,15 @@ async function handleImportByIdentifier(data: RequestData): Promise<JsonPayload>
 }
 
 async function handleImportPdf(data: RequestData): Promise<JsonPayload> {
-	const filePath = optionalNonEmptyString(data.file_path);
-	const fileBytesBase64 = optionalNonEmptyString(data.file_bytes_base64);
+	const fileName = requireNonEmptyString(data.file_name, "file_name");
+	const fileBytesBase64 = requireNonEmptyString(data.file_bytes_base64, "file_bytes_base64");
 	const collectionKey = optionalNonEmptyString(data.collection_key);
 
-	if (!filePath && !fileBytesBase64) {
-		throw new Error("Either file_path or file_bytes_base64 must be provided");
-	}
-
-	let sourcePath: string;
 	let tempPath: string | null = null;
 
 	try {
-		if (filePath) {
-			if (!FULLTEXT_ALLOWED_DIRS.some(dir => filePath.startsWith(dir))) {
-				throw new Error(
-					"File path must be within allowed directories: " + FULLTEXT_ALLOWED_DIRS.join(", ")
-				);
-			}
-			sourcePath = resolveAttachFilePath(filePath);
-		}
-		else {
-			const fileName = requireNonEmptyString(data.file_name, "file_name");
-			tempPath = await materializeUploadBytes(fileName, fileBytesBase64 as string);
-			sourcePath = tempPath;
-		}
+		tempPath = await materializeUploadBytes(fileName, fileBytesBase64);
+		const sourcePath = tempPath;
 
 		const libraryID = userLibraryID();
 		const attachment = await Zotero.Attachments.importFromFile({
