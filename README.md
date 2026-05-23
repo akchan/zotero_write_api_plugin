@@ -75,4 +75,4 @@ The upstream plugin handles tags, collections, item-field edits, attachment reli
 
 ## License
 
-MIT, matching upstream.
+GPL-3.0, matching upstream.
