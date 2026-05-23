@@ -15,6 +15,8 @@ const UPDATE_URL = "https://raw.githubusercontent.com/akchan/zotero_write_api_pl
 const STRICT_MIN_VERSION = "7.0";
 const STRICT_MAX_VERSION = "*";
 const TESTED_ZOTERO_VERSION = "8.0.1";
+const MAX_ATTACH_MB_PREF = "extensions.zotero-write-api.max_attach_mb";
+const DEFAULT_MAX_ATTACH_MB = 100;
 const SUPPORTED_OPERATIONS = [
 	"import_by_identifier",
 	"attach_note",
@@ -173,6 +175,36 @@ async function collectionIDFromKey(collectionKey: string): Promise<number> {
 	return collection.id;
 }
 
+function getMaxAttachBytes(): number {
+	let mb = DEFAULT_MAX_ATTACH_MB;
+	try {
+		const raw = Zotero.Prefs.get(MAX_ATTACH_MB_PREF, true);
+		const parsed = typeof raw === "number" ? raw : parseInt(String(raw), 10);
+		if (Number.isFinite(parsed) && parsed > 0) {
+			mb = parsed;
+		}
+	}
+	catch {
+		// pref unset — fall back to default
+	}
+	return mb * 1024 * 1024;
+}
+
+// Reject oversized base64 payloads before allocating the decoded buffer.
+function enforceAttachSizeLimit(fileBytesBase64: string): void {
+	const maxBytes = getMaxAttachBytes();
+	// base64 decodes to ~3/4 of its character count; trailing '=' padding is negligible.
+	const estimatedBytes = Math.floor((fileBytesBase64.length * 3) / 4);
+	if (estimatedBytes > maxBytes) {
+		const limitMb = Math.floor(maxBytes / (1024 * 1024));
+		const sizeMb = Math.floor(estimatedBytes / (1024 * 1024));
+		throw new Error(
+			`Attachment too large: ~${sizeMb} MB exceeds limit ${limitMb} MB `
+			+ `(adjust via pref ${MAX_ATTACH_MB_PREF})`
+		);
+	}
+}
+
 async function materializeUploadBytes(fileName: string, fileBytesBase64: string): Promise<string> {
 	const tempDir = Zotero.getTempDirectory();
 	const safeFileName = Zotero.File.getValidFileName(fileName.trim()) || "attachment.bin";
@@ -216,6 +248,7 @@ async function handleFulltextAttach(data: RequestData): Promise<JsonPayload> {
 	const title = requireNonEmptyString(data.title, "title");
 	const fileName = requireNonEmptyString(data.file_name, "file_name");
 	const fileBytesBase64 = requireNonEmptyString(data.file_bytes_base64, "file_bytes_base64");
+	enforceAttachSizeLimit(fileBytesBase64);
 
 	const parentItem = await getUserItemOrThrow(itemKey);
 	let tempPath: string | null = null;
@@ -338,6 +371,7 @@ async function handleImportByIdentifier(data: RequestData): Promise<JsonPayload>
 async function handleImportPdf(data: RequestData): Promise<JsonPayload> {
 	const fileName = requireNonEmptyString(data.file_name, "file_name");
 	const fileBytesBase64 = requireNonEmptyString(data.file_bytes_base64, "file_bytes_base64");
+	enforceAttachSizeLimit(fileBytesBase64);
 	const collectionKey = optionalNonEmptyString(data.collection_key);
 
 	let tempPath: string | null = null;

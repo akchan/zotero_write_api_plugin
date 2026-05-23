@@ -31,6 +31,7 @@ The plugin accepts file content only as base64-encoded bytes (`file_bytes_base64
 ## Security
 
 - **Local-only**: requests are rejected if their `Host`, `Origin`, or `Referer` header points anywhere other than `localhost`/`127.0.0.1`. This defends against DNS-rebinding and cross-origin POSTs from a browser the user happens to have open.
+- **Attachment size limit**: `/attach` and `import_pdf` reject base64 payloads decoding to more than **100 MB** by default. Adjust via the Zotero pref `extensions.zotero-write-api.max_attach_mb` (Tools → Developer → Config Editor; type Number).
 
 ## Install
 
